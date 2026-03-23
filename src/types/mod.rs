@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Env, String as SorobanString, Vec};
+use soroban_sdk::{contracttype, Address, Bytes, Env, String as SorobanString, Vec};
 
 // TODO(#45): replace generate_id with hash(anchor_transaction_id) for determinism
 // TODO(#46): add `Cancelled` status for user-initiated cancellations
@@ -128,5 +128,21 @@ pub enum Event {
 }
 
 fn generate_id(env: &Env) -> SorobanString {
-    SorobanString::from_str(env, &soroban_sdk::format!("{}-{}", env.ledger().timestamp(), env.ledger().sequence()))
+    // Build a unique ID from ledger sequence + timestamp bytes, then SHA-256 hash it.
+    let seq = env.ledger().sequence().to_be_bytes();
+    let ts  = env.ledger().timestamp().to_be_bytes();
+    let mut raw = Bytes::new(env);
+    raw.extend_from_array(&seq);
+    raw.extend_from_array(&ts);
+    let hash = env.crypto().sha256(&raw);
+    // Encode first 16 bytes of hash as lowercase hex → 32-char ID
+    let hex_chars = b"0123456789abcdef";
+    let hash_bytes = hash.to_array();
+    let mut buf = [0u8; 32];
+    for i in 0..16usize {
+        buf[i * 2]     = hex_chars[(hash_bytes[i] >> 4) as usize];
+        buf[i * 2 + 1] = hex_chars[(hash_bytes[i] & 0xf) as usize];
+    }
+    let s = core::str::from_utf8(&buf).unwrap_or("0000000000000000000000000000000000000000");
+    SorobanString::from_str(env, s)
 }

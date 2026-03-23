@@ -24,8 +24,16 @@ impl SynapseContract {
     }
 
     // TODO(#3): emit `RelayerGranted` event
-    // TODO(#4): prevent granting relayer to the zero/invalid address
     pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
+        // Reject the all-zeros Stellar account (GAAAAAA...AWHF) as an invalid address.
+        // This is the canonical "zero address" on Stellar — 32 zero bytes encoded as a G-address.
+        let zero_addr = Address::from_string(&SorobanString::from_str(
+            &env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        ));
+        if relayer == zero_addr {
+            panic!("invalid relayer address")
+        }
         require_admin(&env, &caller);
         relayers::add(&env, &relayer);
     }
@@ -192,5 +200,272 @@ impl SynapseContract {
 
     pub fn is_relayer(env: Env, address: Address) -> bool {
         relayers::has(&env, &address)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, vec, Env};
+
+    fn setup(env: &Env) -> (Address, SynapseContractClient) {
+        env.mock_all_auths();
+        let id = env.register_contract(None, SynapseContract);
+        let client = SynapseContractClient::new(env, &id);
+        let admin = Address::generate(env);
+        client.initialize(&admin);
+        (admin, client)
+    }
+
+    fn usd(env: &Env) -> SorobanString {
+        SorobanString::from_str(env, "USD")
+    }
+
+    // ---------------------------------------------------------------------------
+    // Init — TODO(#1), TODO(#2)
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn initialize_sets_admin() {
+        let env = Env::default();
+        let (_, _client) = setup(&env);
+        // TODO(#41): assert client.get_admin() == admin once query is added
+    }
+
+    #[test]
+    #[should_panic]
+    fn initialize_twice_panics() {
+        // TODO(#1): implement guard, then enable this test
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        client.initialize(&admin);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Access control
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn grant_and_revoke_relayer() {
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        assert!(client.is_relayer(&relayer));
+        client.revoke_relayer(&admin, &relayer);
+        assert!(!client.is_relayer(&relayer));
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid relayer address")]
+    fn grant_relayer_rejects_zero_address() {
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        let zero = Address::from_string(&SorobanString::from_str(
+            &env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        ));
+        client.grant_relayer(&admin, &zero);
+    }
+
+    #[test]
+    #[should_panic]
+    fn non_admin_cannot_grant_relayer() {
+        let env = Env::default();
+        let (_, client) = setup(&env);
+        let rando = Address::generate(&env);
+        client.grant_relayer(&rando, &rando);
+    }
+
+    #[test]
+    fn pause_and_unpause() {
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        client.pause(&admin);
+        client.unpause(&admin);
+    }
+
+    #[test]
+    #[should_panic]
+    fn mutating_call_while_paused_panics() {
+        // TODO(#63): wire require_not_paused, then enable this test
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &usd(&env));
+        client.pause(&admin);
+        client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "a1"),
+            &Address::generate(&env),
+            &100_000_000,
+            &usd(&env),
+        );
+    }
+
+    // ---------------------------------------------------------------------------
+    // Asset allowlist
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn add_and_remove_asset() {
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        client.add_asset(&admin, &usd(&env));
+        assert!(client.is_asset_allowed(&usd(&env)));
+        client.remove_asset(&admin, &usd(&env));
+        assert!(!client.is_asset_allowed(&usd(&env)));
+    }
+
+    #[test]
+    #[should_panic]
+    fn register_deposit_rejects_unlisted_asset() {
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "a1"),
+            &Address::generate(&env),
+            &100_000_000,
+            &usd(&env),
+        );
+    }
+
+    // ---------------------------------------------------------------------------
+    // Deposit registration
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn register_deposit_returns_tx_id() {
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &usd(&env));
+        let anchor_id = SorobanString::from_str(&env, "anchor-001");
+        let tx_id = client.register_deposit(
+            &relayer,
+            &anchor_id,
+            &Address::generate(&env),
+            &100_000_000,
+            &usd(&env),
+        );
+        let tx = client.get_transaction(&tx_id);
+        assert_eq!(tx.amount, 100_000_000);
+    }
+
+    #[test]
+    fn register_deposit_is_idempotent() {
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &usd(&env));
+        let anchor_id = SorobanString::from_str(&env, "anchor-001");
+        let depositor = Address::generate(&env);
+        let id1 = client.register_deposit(&relayer, &anchor_id, &depositor, &100_000_000, &usd(&env));
+        let id2 = client.register_deposit(&relayer, &anchor_id, &depositor, &100_000_000, &usd(&env));
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    #[should_panic]
+    fn register_deposit_rejects_non_relayer() {
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        client.add_asset(&admin, &usd(&env));
+        client.register_deposit(
+            &admin,
+            &SorobanString::from_str(&env, "a1"),
+            &Address::generate(&env),
+            &100_000_000,
+            &usd(&env),
+        );
+    }
+
+    // ---------------------------------------------------------------------------
+    // Transaction lifecycle
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn full_lifecycle_pending_to_completed() {
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &usd(&env));
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "a1"),
+            &Address::generate(&env),
+            &50_000_000,
+            &usd(&env),
+        );
+        client.mark_processing(&relayer, &tx_id);
+        client.mark_completed(&relayer, &tx_id);
+    }
+
+    #[test]
+    fn mark_failed_creates_dlq_entry() {
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &usd(&env));
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "a2"),
+            &Address::generate(&env),
+            &50_000_000,
+            &usd(&env),
+        );
+        client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "horizon timeout"));
+    }
+
+    // ---------------------------------------------------------------------------
+    // DLQ retry
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    #[should_panic(expected = "not implemented")]
+    fn retry_dlq_panics_until_implemented() {
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        client.retry_dlq(&admin, &SorobanString::from_str(&env, "fake-id"));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Settlement
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn finalize_settlement_stores_record() {
+        let env = Env::default();
+        let (admin, client) = setup(&env);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &usd(&env));
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "a3"),
+            &Address::generate(&env),
+            &100_000_000,
+            &usd(&env),
+        );
+        client.mark_processing(&relayer, &tx_id);
+        client.mark_completed(&relayer, &tx_id);
+        let s_id = client.finalize_settlement(
+            &relayer,
+            &usd(&env),
+            &vec![&env, tx_id],
+            &100_000_000,
+            &0u64,
+            &1u64,
+        );
+        let s = client.get_settlement(&s_id);
+        assert_eq!(s.total_amount, 100_000_000);
     }
 }

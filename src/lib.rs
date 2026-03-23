@@ -24,8 +24,16 @@ impl SynapseContract {
     }
 
     // TODO(#3): emit `RelayerGranted` event
-    // TODO(#4): prevent granting relayer to the zero/invalid address
     pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
+        // Reject the all-zeros Stellar account (GAAAAAA...AWHF) as an invalid address.
+        // This is the canonical "zero address" on Stellar — 32 zero bytes encoded as a G-address.
+        let zero_addr = Address::from_string(&SorobanString::from_str(
+            &env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        ));
+        if relayer == zero_addr {
+            panic!("invalid relayer address")
+        }
         require_admin(&env, &caller);
         relayers::add(&env, &relayer);
     }

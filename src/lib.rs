@@ -39,9 +39,11 @@ impl SynapseContract {
     }
 
     // TODO(#5): emit `RelayerRevoked` event
-    // TODO(#6): panic if revoking a non-existent relayer
     pub fn revoke_relayer(env: Env, caller: Address, relayer: Address) {
         require_admin(&env, &caller);
+        if !relayers::has(&env, &relayer) {
+            panic!("address is not a relayer")
+        }
         relayers::remove(&env, &relayer);
     }
 
@@ -111,7 +113,10 @@ impl SynapseContract {
         let id = tx.id.clone();
         deposits::save(&env, &tx);
         deposits::index_anchor_id(&env, &anchor_transaction_id, &id);
-        emit(&env, Event::DepositRegistered(id.clone(), anchor_transaction_id));
+        emit(
+            &env,
+            Event::DepositRegistered(id.clone(), anchor_transaction_id),
+        );
         id
     }
 
@@ -122,7 +127,10 @@ impl SynapseContract {
         tx.status = TransactionStatus::Processing;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        emit(&env, Event::StatusUpdated(tx_id, TransactionStatus::Processing));
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id, TransactionStatus::Processing),
+        );
     }
 
     // TODO(#25): enforce transition guard — must be Processing
@@ -132,12 +140,20 @@ impl SynapseContract {
         tx.status = TransactionStatus::Completed;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        emit(&env, Event::StatusUpdated(tx_id, TransactionStatus::Completed));
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id, TransactionStatus::Completed),
+        );
     }
 
     // TODO(#27): cap max retry_count; emit `MaxRetriesExceeded` when hit
     // TODO(#28): validate error_reason is non-empty
-    pub fn mark_failed(env: Env, caller: Address, tx_id: SorobanString, error_reason: SorobanString) {
+    pub fn mark_failed(
+        env: Env,
+        caller: Address,
+        tx_id: SorobanString,
+        error_reason: SorobanString,
+    ) {
         require_relayer(&env, &caller);
         let mut tx = deposits::get(&env, &tx_id);
         if !matches!(
@@ -184,10 +200,20 @@ impl SynapseContract {
         if period_start > period_end {
             panic!("period_start must be <= period_end")
         }
-        let s = Settlement::new(&env, asset_code.clone(), tx_ids, total_amount, period_start, period_end);
+        let s = Settlement::new(
+            &env,
+            asset_code.clone(),
+            tx_ids,
+            total_amount,
+            period_start,
+            period_end,
+        );
         let id = s.id.clone();
         settlements::save(&env, &s);
-        emit(&env, Event::SettlementFinalized(id.clone(), asset_code, total_amount));
+        emit(
+            &env,
+            Event::SettlementFinalized(id.clone(), asset_code, total_amount),
+        );
         id
     }
 
@@ -222,9 +248,9 @@ mod tests {
     use super::*;
     use crate::storage::{StorageKey, MAX_ASSETS};
     use soroban_sdk::{
+        symbol_short,
         testutils::{storage::Persistent, Address as _, Events as _},
-        vec,
-        Env, IntoVal, String as SorobanString, symbol_short,
+        vec, Env, IntoVal, String as SorobanString,
     };
 
     const TEST_ASSET_CODES: [&str; MAX_ASSETS as usize] = [
@@ -239,6 +265,16 @@ mod tests {
         let admin = Address::generate(env);
         client.initialize(&admin);
         (admin, contract_id)
+    }
+
+    #[test]
+    #[should_panic(expected = "address is not a relayer")]
+    fn test_revoke_relayer_panics_when_not_a_relayer() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let non_relayer = Address::generate(&env);
+        client.revoke_relayer(&admin, &non_relayer);
     }
 
     #[test]
@@ -330,14 +366,14 @@ mod tests {
         let env = Env::default();
         let (admin, contract_id) = setup(&env);
         let client = SynapseContractClient::new(&env, &contract_id);
-        
+
         // Initially should not be paused
         assert!(!client.is_paused());
-        
+
         // Pause the contract
         client.pause(&admin);
         assert!(client.is_paused());
-        
+
         // Unpause the contract
         client.unpause(&admin);
         assert!(!client.is_paused());
@@ -356,13 +392,7 @@ mod tests {
         client.grant_relayer(&admin, &relayer);
         client.add_asset(&admin, &asset);
 
-        let tx_id = client.register_deposit(
-            &relayer,
-            &anchor_id,
-            &stellar,
-            &100i128,
-            &asset,
-        );
+        let tx_id = client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset);
 
         let anchor_key = StorageKey::AnchorIdx(anchor_id);
         let tx_key = StorageKey::Tx(tx_id);
@@ -399,10 +429,7 @@ mod tests {
         for code in TEST_ASSET_CODES {
             client.add_asset(&admin, &SorobanString::from_str(&env, code));
         }
-        client.add_asset(
-            &admin,
-            &SorobanString::from_str(&env, "OVERFLOW"),
-        );
+        client.add_asset(&admin, &SorobanString::from_str(&env, "OVERFLOW"));
     }
 
     #[test]

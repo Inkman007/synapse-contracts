@@ -123,9 +123,9 @@ impl DlqEntry {
 #[derive(Clone)]
 pub enum Event {
     Initialized(Address),                                    // (admin)
-    DepositRegistered(SorobanString, SorobanString), // (tx_id, anchor_id)
-    StatusUpdated(SorobanString, TransactionStatus),  // (tx_id, new_status)
-    MovedToDlq(SorobanString, SorobanString),         // (tx_id, error_reason)
+    DepositRegistered(SorobanString, SorobanString),         // (tx_id, anchor_id)
+    StatusUpdated(SorobanString, TransactionStatus),         // (tx_id, new_status)
+    MovedToDlq(SorobanString, SorobanString),                // (tx_id, error_reason)
     SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),

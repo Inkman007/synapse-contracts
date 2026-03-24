@@ -1,15 +1,25 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString, vec};
-use crate::{SynapseContract, SynapseContractClient};
+use soroban_sdk::{
+    symbol_short,
+    testutils::{Address as _, Events as _},
+    vec,
+    Address,
+    Env,
+    IntoVal,
+    String as SorobanString,
+    TryFromVal,
+    Val,
+};
+use synapse_contract::{Event, SynapseContract, SynapseContractClient};
 
-fn setup(env: &Env) -> (Address, SynapseContractClient) {
+fn setup(env: &Env) -> (Address, Address, SynapseContractClient<'_>) {
     env.mock_all_auths();
     let id = env.register_contract(None, SynapseContract);
     let client = SynapseContractClient::new(env, &id);
     let admin = Address::generate(env);
     client.initialize(&admin);
-    (admin, client)
+    (admin, id, client)
 }
 
 fn usd(env: &Env) -> SorobanString { SorobanString::from_str(env, "USD") }
@@ -21,7 +31,7 @@ fn usd(env: &Env) -> SorobanString { SorobanString::from_str(env, "USD") }
 #[test]
 fn initialize_sets_admin() {
     let env = Env::default();
-    let (_, client) = setup(&env);
+    let (_, _, _client) = setup(&env);
     // TODO(#41): assert client.get_admin() == admin once query is added
 }
 
@@ -30,7 +40,7 @@ fn initialize_sets_admin() {
 fn initialize_twice_panics() {
     // TODO(#1): implement guard, then enable this test
     let env = Env::default();
-    let (admin, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
     client.initialize(&admin);
 }
 
@@ -41,7 +51,7 @@ fn initialize_twice_panics() {
 #[test]
 fn grant_and_revoke_relayer() {
     let env = Env::default();
-    let (admin, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     assert!(client.is_relayer(&relayer));
@@ -53,7 +63,7 @@ fn grant_and_revoke_relayer() {
 #[should_panic]
 fn non_admin_cannot_grant_relayer() {
     let env = Env::default();
-    let (_, client) = setup(&env);
+    let (_, _, client) = setup(&env);
     let rando = Address::generate(&env);
     client.grant_relayer(&rando, &rando);
 }
@@ -61,7 +71,7 @@ fn non_admin_cannot_grant_relayer() {
 #[test]
 fn pause_and_unpause() {
     let env = Env::default();
-    let (admin, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
     client.pause(&admin);
     // TODO(#42): assert client.is_paused() == true
     client.unpause(&admin);
@@ -73,7 +83,7 @@ fn pause_and_unpause() {
 fn mutating_call_while_paused_panics() {
     // TODO(#63): wire require_not_paused, then enable this test
     let env = Env::default();
-    let (admin, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
@@ -89,7 +99,7 @@ fn mutating_call_while_paused_panics() {
 #[test]
 fn add_and_remove_asset() {
     let env = Env::default();
-    let (admin, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
     client.add_asset(&admin, &usd(&env));
     assert!(client.is_asset_allowed(&usd(&env)));
     client.remove_asset(&admin, &usd(&env));
@@ -100,7 +110,7 @@ fn add_and_remove_asset() {
 #[should_panic]
 fn register_deposit_rejects_unlisted_asset() {
     let env = Env::default();
-    let (admin, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     client.register_deposit(&relayer, &SorobanString::from_str(&env, "a1"),
@@ -114,7 +124,7 @@ fn register_deposit_rejects_unlisted_asset() {
 #[test]
 fn register_deposit_returns_tx_id() {
     let env = Env::default();
-    let (admin, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
@@ -127,7 +137,7 @@ fn register_deposit_returns_tx_id() {
 #[test]
 fn register_deposit_is_idempotent() {
     let env = Env::default();
-    let (admin, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
@@ -142,7 +152,7 @@ fn register_deposit_is_idempotent() {
 #[should_panic]
 fn register_deposit_rejects_non_relayer() {
     let env = Env::default();
-    let (admin, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
     client.add_asset(&admin, &usd(&env));
     client.register_deposit(&admin, &SorobanString::from_str(&env, "a1"),
         &Address::generate(&env), &100_000_000, &usd(&env));
@@ -159,7 +169,7 @@ fn register_deposit_rejects_non_relayer() {
 #[test]
 fn full_lifecycle_pending_to_completed() {
     let env = Env::default();
-    let (admin, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
@@ -173,7 +183,7 @@ fn full_lifecycle_pending_to_completed() {
 #[test]
 fn mark_failed_creates_dlq_entry() {
     let env = Env::default();
-    let (admin, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
@@ -195,7 +205,7 @@ fn mark_failed_creates_dlq_entry() {
 #[should_panic(expected = "not implemented")]
 fn retry_dlq_panics_until_implemented() {
     let env = Env::default();
-    let (admin, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
     client.retry_dlq(&admin, &SorobanString::from_str(&env, "fake-id"));
 }
 
@@ -211,7 +221,7 @@ fn retry_dlq_panics_until_implemented() {
 #[test]
 fn finalize_settlement_stores_record() {
     let env = Env::default();
-    let (admin, client) = setup(&env);
+    let (admin, _, client) = setup(&env);
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
@@ -223,6 +233,63 @@ fn finalize_settlement_stores_record() {
         &vec![&env, tx_id], &100_000_000, &0u64, &1u64);
     let s = client.get_settlement(&s_id);
     assert_eq!(s.total_amount, 100_000_000);
+}
+
+#[test]
+fn finalize_settlement_emits_per_tx_events() {
+    let env = Env::default();
+    let (admin, contract_id, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+
+    let tx_id_1 = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a4"),
+        &Address::generate(&env), &40_000_000, &usd(&env));
+    client.mark_processing(&relayer, &tx_id_1);
+    client.mark_completed(&relayer, &tx_id_1);
+
+    let tx_id_2 = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a5"),
+        &Address::generate(&env), &60_000_000, &usd(&env));
+    client.mark_processing(&relayer, &tx_id_2);
+    client.mark_completed(&relayer, &tx_id_2);
+
+    let settlement_id = client.finalize_settlement(
+        &relayer,
+        &usd(&env),
+        &vec![&env, tx_id_1.clone(), tx_id_2.clone()],
+        &100_000_000,
+        &0u64,
+        &1u64,
+    );
+
+    let all_events = env.events().all();
+    let event_count = all_events.len();
+    let topics: soroban_sdk::Vec<Val> = (symbol_short!("synapse"),).into_val(&env);
+
+    let (event_contract_1, event_topics_1, event_data_1) = all_events.get(event_count - 3).unwrap();
+    let (event_contract_2, event_topics_2, event_data_2) = all_events.get(event_count - 2).unwrap();
+    let (event_contract_3, event_topics_3, event_data_3) = all_events.get(event_count - 1).unwrap();
+
+    assert_eq!(event_contract_1, contract_id.clone());
+    assert_eq!(event_topics_1, topics.clone());
+    assert_eq!(
+        Event::try_from_val(&env, &event_data_1).unwrap(),
+        Event::Settled(tx_id_1, settlement_id.clone()),
+    );
+
+    assert_eq!(event_contract_2, contract_id.clone());
+    assert_eq!(event_topics_2, topics.clone());
+    assert_eq!(
+        Event::try_from_val(&env, &event_data_2).unwrap(),
+        Event::Settled(tx_id_2, settlement_id.clone()),
+    );
+
+    assert_eq!(event_contract_3, contract_id);
+    assert_eq!(event_topics_3, topics);
+    assert_eq!(
+        Event::try_from_val(&env, &event_data_3).unwrap(),
+        Event::SettlementFinalized(settlement_id, usd(&env), 100_000_000),
+    );
 }
 
 // TODO(#33): test that settling a non-Completed tx panics

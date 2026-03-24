@@ -1,5 +1,7 @@
 #![no_std]
 
+extern crate alloc;
+
 mod access;
 mod events;
 mod storage;
@@ -9,7 +11,9 @@ use access::{require_admin, require_relayer};
 use events::emit;
 use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 use storage::{assets, deposits, dlq, relayers, settlements};
-use types::{DlqEntry, Event, Settlement, Transaction, TransactionStatus};
+use types::{DlqEntry, Settlement, Transaction, TransactionStatus};
+
+pub use types::Event;
 
 #[contract]
 pub struct SynapseContract;
@@ -165,9 +169,14 @@ impl SynapseContract {
         period_end: u64,
     ) -> SorobanString {
         require_relayer(&env, &caller);
-        let s = Settlement::new(&env, asset_code.clone(), tx_ids, total_amount, period_start, period_end);
+        let s = Settlement::new(&env, asset_code.clone(), tx_ids.clone(), total_amount, period_start, period_end);
         let id = s.id.clone();
         settlements::save(&env, &s);
+
+        for tx_id in tx_ids.iter() {
+            emit(&env, Event::Settled(tx_id, id.clone()));
+        }
+
         emit(&env, Event::SettlementFinalized(id.clone(), asset_code, total_amount));
         id
     }

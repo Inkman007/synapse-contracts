@@ -1,3 +1,4 @@
+use alloc::format;
 use soroban_sdk::{contracttype, Address, Env, String as SorobanString, Vec};
 
 // TODO(#45): replace generate_id with hash(anchor_transaction_id) for determinism
@@ -8,7 +9,7 @@ use soroban_sdk::{contracttype, Address, Env, String as SorobanString, Vec};
 // TODO(#50): store `relayer: Address` on Transaction (who registered it)
 
 #[contracttype]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TransactionStatus {
     Pending,
     Processing,
@@ -117,16 +118,17 @@ impl DlqEntry {
 // TODO(#56): add `MaxRetriesExceeded(SorobanString)` variant
 // TODO(#57): add `AdminTransferred(Address, Address)` variant
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Event {
     DepositRegistered(SorobanString, SorobanString), // (tx_id, anchor_id)
     StatusUpdated(SorobanString, TransactionStatus),  // (tx_id, new_status)
     MovedToDlq(SorobanString, SorobanString),         // (tx_id, error_reason)
+    Settled(SorobanString, SorobanString),            // (tx_id, settlement_id)
     SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
 }
 
 fn generate_id(env: &Env) -> SorobanString {
-    SorobanString::from_str(env, &soroban_sdk::format!("{}-{}", env.ledger().timestamp(), env.ledger().sequence()))
+    SorobanString::from_str(env, &format!("{}-{}", env.ledger().timestamp(), env.ledger().sequence()))
 }

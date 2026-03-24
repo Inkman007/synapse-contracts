@@ -3,6 +3,8 @@ extern crate alloc;
 use alloc::format;
 
 // TODO(#45): replace generate_id with hash(anchor_transaction_id) for determinism
+
+pub const MAX_RETRIES: u32 = 5;
 // TODO(#46): add `Cancelled` status for user-initiated cancellations
 // TODO(#47): add `memo: Option<SorobanString>` field to Transaction
 // TODO(#48): add `memo_type: Option<SorobanString>` field to Transaction
@@ -127,6 +129,8 @@ pub enum Event {
     SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
+    DlqRetried(SorobanString),
+    MaxRetriesExceeded(SorobanString),
 }
 
 fn generate_id(env: &Env) -> SorobanString {

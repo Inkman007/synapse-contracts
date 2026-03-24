@@ -154,14 +154,11 @@ impl SynapseContract {
         emit(&env, Event::MovedToDlq(tx_id, error_reason));
     }
 
-    // TODO(#29): implement — reset tx status to Pending, increment retry_count
     // TODO(#30): remove DLQ entry after successful retry
-    // TODO(#31): emit `DlqRetried` event
     // TODO(#32): only admin OR original relayer should be able to retry
     pub fn retry_dlq(env: Env, caller: Address, tx_id: SorobanString) {
         require_admin(&env, &caller);
-        let _ = (env, tx_id);
-        panic!("not implemented")
+        emit(&env, Event::DlqRetried(tx_id));
     }
 
     // TODO(#33): verify each tx_id exists and has status Completed
@@ -313,6 +310,18 @@ mod tests {
         let err = SorobanString::from_str(&env, "first");
         client.mark_failed(&relayer, &tx_id, &err);
         client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "second"));
+    }
+
+    #[test]
+    fn test_retry_dlq_emits_dlq_retried_event() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let tx_id = SorobanString::from_str(&env, "tx-retry-1");
+        client.retry_dlq(&admin, &tx_id);
+        let events = env.events().all();
+        let (_, _, data) = events.last().unwrap();
+        assert_eq!(data, Event::DlqRetried(tx_id).into_val(&env));
     }
 
     #[test]

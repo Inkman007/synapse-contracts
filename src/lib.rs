@@ -128,12 +128,17 @@ impl SynapseContract {
         emit(&env, Event::StatusUpdated(tx_id, TransactionStatus::Completed));
     }
 
-    // TODO(#26): enforce transition guard — must be Pending or Processing
     // TODO(#27): cap max retry_count; emit `MaxRetriesExceeded` when hit
     // TODO(#28): validate error_reason is non-empty
     pub fn mark_failed(env: Env, caller: Address, tx_id: SorobanString, error_reason: SorobanString) {
         require_relayer(&env, &caller);
         let mut tx = deposits::get(&env, &tx_id);
+        if !matches!(
+            tx.status,
+            TransactionStatus::Pending | TransactionStatus::Processing
+        ) {
+            panic!("transaction must be Pending or Processing")
+        }
         tx.status = TransactionStatus::Failed;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
@@ -227,6 +232,67 @@ mod tests {
         let admin = Address::generate(env);
         client.initialize(&admin);
         (admin, contract_id)
+    }
+
+    fn setup_relayer_deposit<'a>(
+        env: &'a Env,
+        anchor_label: &str,
+    ) -> (SynapseContractClient<'a>, Address, SorobanString) {
+        let (admin, contract_id) = setup(env);
+        let client = SynapseContractClient::new(env, &contract_id);
+        let relayer = Address::generate(env);
+        let stellar = Address::generate(env);
+        let asset = SorobanString::from_str(env, "USD");
+        let anchor_id = SorobanString::from_str(env, anchor_label);
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        let tx_id = client.register_deposit(&relayer, &anchor_id, &stellar, &1i128, &asset);
+        (client, relayer, tx_id)
+    }
+
+    #[test]
+    fn test_mark_failed_allowed_when_pending() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mf-pending");
+        let err = SorobanString::from_str(&env, "boom");
+        client.mark_failed(&relayer, &tx_id, &err);
+        let tx = client.get_transaction(&tx_id);
+        assert!(matches!(tx.status, TransactionStatus::Failed));
+    }
+
+    #[test]
+    fn test_mark_failed_allowed_when_processing() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mf-processing");
+        client.mark_processing(&relayer, &tx_id);
+        let err = SorobanString::from_str(&env, "boom");
+        client.mark_failed(&relayer, &tx_id, &err);
+        let tx = client.get_transaction(&tx_id);
+        assert!(matches!(tx.status, TransactionStatus::Failed));
+    }
+
+    #[test]
+    #[should_panic(expected = "transaction must be Pending or Processing")]
+    fn test_mark_failed_panics_when_completed() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mf-completed");
+        client.mark_processing(&relayer, &tx_id);
+        client.mark_completed(&relayer, &tx_id);
+        client.mark_failed(
+            &relayer,
+            &tx_id,
+            &SorobanString::from_str(&env, "late-fail"),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "transaction must be Pending or Processing")]
+    fn test_mark_failed_panics_when_already_failed() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mf-twice");
+        let err = SorobanString::from_str(&env, "first");
+        client.mark_failed(&relayer, &tx_id, &err);
+        client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "second"));
     }
 
     #[test]

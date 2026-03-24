@@ -5,7 +5,7 @@ mod events;
 mod storage;
 pub mod types;
 
-use access::{require_admin, require_relayer};
+use access::{require_admin, require_admin_or_original_relayer, require_relayer};
 use events::emit;
 use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 use storage::{assets, deposits, dlq, relayers, settlements};
@@ -96,11 +96,21 @@ impl SynapseContract {
             return existing;
         }
 
-        let tx = Transaction::new(&env, anchor_transaction_id.clone(), stellar_account, amount, asset_code);
+        let tx = Transaction::new(
+            &env,
+            anchor_transaction_id.clone(),
+            stellar_account,
+            caller.clone(),
+            amount,
+            asset_code,
+        );
         let id = tx.id.clone();
         deposits::save(&env, &tx);
         deposits::index_anchor_id(&env, &anchor_transaction_id, &id);
-        emit(&env, Event::DepositRegistered(id.clone(), anchor_transaction_id));
+        emit(
+            &env,
+            Event::DepositRegistered(id.clone(), anchor_transaction_id),
+        );
         id
     }
 
@@ -112,7 +122,10 @@ impl SynapseContract {
         tx.status = TransactionStatus::Processing;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        emit(&env, Event::StatusUpdated(tx_id, TransactionStatus::Processing));
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id, TransactionStatus::Processing),
+        );
     }
 
     // TODO(#25): enforce transition guard — must be Processing
@@ -122,13 +135,21 @@ impl SynapseContract {
         tx.status = TransactionStatus::Completed;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        emit(&env, Event::StatusUpdated(tx_id, TransactionStatus::Completed));
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id, TransactionStatus::Completed),
+        );
     }
 
     // TODO(#26): enforce transition guard — must be Pending or Processing
     // TODO(#27): cap max retry_count; emit `MaxRetriesExceeded` when hit
     // TODO(#28): validate error_reason is non-empty
-    pub fn mark_failed(env: Env, caller: Address, tx_id: SorobanString, error_reason: SorobanString) {
+    pub fn mark_failed(
+        env: Env,
+        caller: Address,
+        tx_id: SorobanString,
+        error_reason: SorobanString,
+    ) {
         require_relayer(&env, &caller);
         let mut tx = deposits::get(&env, &tx_id);
         tx.status = TransactionStatus::Failed;
@@ -139,14 +160,19 @@ impl SynapseContract {
         emit(&env, Event::MovedToDlq(tx_id, error_reason));
     }
 
-    // TODO(#29): implement — reset tx status to Pending, increment retry_count
-    // TODO(#30): remove DLQ entry after successful retry
+    // TODO(#29): increment retry_count on DlqEntry
     // TODO(#31): emit `DlqRetried` event
-    // TODO(#32): only admin OR original relayer should be able to retry
     pub fn retry_dlq(env: Env, caller: Address, tx_id: SorobanString) {
-        require_admin(&env, &caller);
-        let _ = (env, tx_id);
-        panic!("not implemented")
+        let tx = deposits::get(&env, &tx_id);
+        require_admin_or_original_relayer(&env, &caller, &tx.relayer);
+        let mut entry = dlq::get(&env, &tx_id).expect("not in dlq");
+        entry.retry_count += 1;
+        entry.last_retry_ledger = env.ledger().sequence();
+        let mut tx = tx;
+        tx.status = TransactionStatus::Pending;
+        tx.updated_ledger = env.ledger().sequence();
+        deposits::save(&env, &tx);
+        dlq::remove(&env, &tx_id);
     }
 
     // TODO(#33): verify each tx_id exists and has status Completed
@@ -166,10 +192,20 @@ impl SynapseContract {
         period_end: u64,
     ) -> SorobanString {
         require_relayer(&env, &caller);
-        let s = Settlement::new(&env, asset_code.clone(), tx_ids, total_amount, period_start, period_end);
+        let s = Settlement::new(
+            &env,
+            asset_code.clone(),
+            tx_ids,
+            total_amount,
+            period_start,
+            period_end,
+        );
         let id = s.id.clone();
         settlements::save(&env, &s);
-        emit(&env, Event::SettlementFinalized(id.clone(), asset_code, total_amount));
+        emit(
+            &env,
+            Event::SettlementFinalized(id.clone(), asset_code, total_amount),
+        );
         id
     }
 

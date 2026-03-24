@@ -22,6 +22,7 @@ pub struct Transaction {
     pub id: SorobanString,
     pub anchor_transaction_id: SorobanString,
     pub stellar_account: Address,
+    pub relayer: Address, // #50: who registered this deposit
     pub amount: i128,
     pub asset_code: SorobanString,
     pub status: TransactionStatus,
@@ -35,6 +36,7 @@ impl Transaction {
         env: &Env,
         anchor_transaction_id: SorobanString,
         stellar_account: Address,
+        relayer: Address,
         amount: i128,
         asset_code: SorobanString,
     ) -> Self {
@@ -43,6 +45,7 @@ impl Transaction {
             id: generate_id(env),
             anchor_transaction_id,
             stellar_account,
+            relayer,
             amount,
             asset_code,
             status: TransactionStatus::Pending,
@@ -120,8 +123,8 @@ impl DlqEntry {
 #[derive(Clone, PartialEq, Debug)]
 pub enum Event {
     DepositRegistered(SorobanString, SorobanString), // (tx_id, anchor_id)
-    StatusUpdated(SorobanString, TransactionStatus),  // (tx_id, new_status)
-    MovedToDlq(SorobanString, SorobanString),         // (tx_id, error_reason)
+    StatusUpdated(SorobanString, TransactionStatus), // (tx_id, new_status)
+    MovedToDlq(SorobanString, SorobanString),        // (tx_id, error_reason)
     SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
@@ -135,11 +138,22 @@ fn generate_id(env: &Env) -> SorobanString {
     let mut buf = [0u8; 32];
     let mut pos = 0usize;
     for (val, is_first) in [(ts, true), (seq, false)] {
-        if !is_first { buf[pos] = b'-'; pos += 1; }
-        if val == 0 { buf[pos] = b'0'; pos += 1; continue; }
+        if !is_first {
+            buf[pos] = b'-';
+            pos += 1;
+        }
+        if val == 0 {
+            buf[pos] = b'0';
+            pos += 1;
+            continue;
+        }
         let start = pos;
         let mut v = val;
-        while v > 0 { buf[pos] = b'0' + (v % 10) as u8; pos += 1; v /= 10; }
+        while v > 0 {
+            buf[pos] = b'0' + (v % 10) as u8;
+            pos += 1;
+            v /= 10;
+        }
         buf[start..pos].reverse();
     }
     SorobanString::from_bytes(env, &buf[..pos])

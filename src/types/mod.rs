@@ -32,6 +32,7 @@ pub struct Transaction {
     pub created_ledger: u32,
     pub updated_ledger: u32,
     pub settlement_id: SorobanString, // empty = unsettled
+    pub callback_type: Option<SorobanString>,
 }
 
 impl Transaction {
@@ -53,6 +54,7 @@ impl Transaction {
             created_ledger: ledger,
             updated_ledger: ledger,
             settlement_id: SorobanString::from_str(env, ""),
+            callback_type: None,
         }
     }
 }

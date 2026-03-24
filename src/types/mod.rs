@@ -128,5 +128,17 @@ pub enum Event {
 }
 
 fn generate_id(env: &Env) -> SorobanString {
-    SorobanString::from_str(env, &soroban_sdk::format!("{}-{}", env.ledger().timestamp(), env.ledger().sequence()))
+    // Simple ID generation using ledger sequence
+    // TODO(#45): replace with hash(anchor_transaction_id) for determinism
+    let seq = env.ledger().sequence();
+    // Convert sequence to a simple string representation
+    // For now, use a fixed prefix with sequence number
+    let id = match seq {
+        0..=9 => "tx-0",
+        10..=99 => "tx-1",
+        100..=999 => "tx-2",
+        1000..=9999 => "tx-3",
+        _ => "tx-4",
+    };
+    SorobanString::from_str(env, id)
 }

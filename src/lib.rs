@@ -5,7 +5,7 @@ mod events;
 mod storage;
 mod types;
 
-use access::{require_admin, require_relayer};
+use access::{require_admin, require_relayer, require_not_paused};
 use events::emit;
 use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 use storage::{assets, deposits, dlq, relayers, settlements};
@@ -27,6 +27,7 @@ impl SynapseContract {
     // TODO(#4): prevent granting relayer to the zero/invalid address
     pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         require_admin(&env, &caller);
+        require_not_paused(&env);
         relayers::add(&env, &relayer);
     }
 
@@ -34,6 +35,7 @@ impl SynapseContract {
     // TODO(#6): panic if revoking a non-existent relayer
     pub fn revoke_relayer(env: Env, caller: Address, relayer: Address) {
         require_admin(&env, &caller);
+        require_not_paused(&env);
         relayers::remove(&env, &relayer);
     }
 
@@ -41,6 +43,7 @@ impl SynapseContract {
     // TODO(#8): two-step admin transfer (propose + accept) to prevent lockout
     pub fn transfer_admin(env: Env, caller: Address, new_admin: Address) {
         require_admin(&env, &caller);
+        require_not_paused(&env);
         storage::admin::set(&env, &new_admin);
     }
 
@@ -61,6 +64,7 @@ impl SynapseContract {
     // TODO(#13): cap the total number of allowed assets to bound instance storage
     pub fn add_asset(env: Env, caller: Address, asset_code: SorobanString) {
         require_admin(&env, &caller);
+        require_not_paused(&env);
         assets::add(&env, &asset_code);
         emit(&env, Event::AssetAdded(asset_code));
     }
@@ -68,6 +72,7 @@ impl SynapseContract {
     // TODO(#14): panic if asset_code is not currently in the allowlist
     pub fn remove_asset(env: Env, caller: Address, asset_code: SorobanString) {
         require_admin(&env, &caller);
+        require_not_paused(&env);
         assets::remove(&env, &asset_code);
         emit(&env, Event::AssetRemoved(asset_code));
     }
@@ -89,6 +94,7 @@ impl SynapseContract {
         asset_code: SorobanString,
     ) -> SorobanString {
         require_relayer(&env, &caller);
+        require_not_paused(&env);
         assets::require_allowed(&env, &asset_code);
 
         if let Some(existing) = deposits::find_by_anchor_id(&env, &anchor_transaction_id) {
@@ -107,6 +113,7 @@ impl SynapseContract {
     // TODO(#24): bump Tx TTL on every status update
     pub fn mark_processing(env: Env, caller: Address, tx_id: SorobanString) {
         require_relayer(&env, &caller);
+        require_not_paused(&env);
         let mut tx = deposits::get(&env, &tx_id);
         tx.status = TransactionStatus::Processing;
         tx.updated_ledger = env.ledger().sequence();
@@ -117,6 +124,7 @@ impl SynapseContract {
     // TODO(#25): enforce transition guard — must be Processing
     pub fn mark_completed(env: Env, caller: Address, tx_id: SorobanString) {
         require_relayer(&env, &caller);
+        require_not_paused(&env);
         let mut tx = deposits::get(&env, &tx_id);
         tx.status = TransactionStatus::Completed;
         tx.updated_ledger = env.ledger().sequence();
@@ -129,6 +137,7 @@ impl SynapseContract {
     // TODO(#28): validate error_reason is non-empty
     pub fn mark_failed(env: Env, caller: Address, tx_id: SorobanString, error_reason: SorobanString) {
         require_relayer(&env, &caller);
+        require_not_paused(&env);
         let mut tx = deposits::get(&env, &tx_id);
         tx.status = TransactionStatus::Failed;
         tx.updated_ledger = env.ledger().sequence();
@@ -165,6 +174,7 @@ impl SynapseContract {
         period_end: u64,
     ) -> SorobanString {
         require_relayer(&env, &caller);
+        require_not_paused(&env);
         let s = Settlement::new(&env, asset_code.clone(), tx_ids, total_amount, period_start, period_end);
         let id = s.id.clone();
         settlements::save(&env, &s);

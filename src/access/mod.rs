@@ -16,6 +16,5 @@ pub fn require_relayer(env: &Env, caller: &Address) {
 }
 
 pub fn require_not_paused(env: &Env) {
-    // TODO(#63): wire this into every state-mutating function
     if pause::is_paused(env) { panic!("contract paused") }
 }

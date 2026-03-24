@@ -3,7 +3,7 @@
 mod access;
 mod events;
 mod storage;
-mod types;
+pub mod types;
 
 use access::{require_admin, require_relayer};
 use events::emit;
@@ -28,6 +28,7 @@ impl SynapseContract {
     pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         require_admin(&env, &caller);
         relayers::add(&env, &relayer);
+        emit(&env, Event::RelayerGranted(relayer));
     }
 
     // TODO(#5): emit `RelayerRevoked` event

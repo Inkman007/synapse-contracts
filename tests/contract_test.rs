@@ -1,7 +1,7 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString, vec};
-use crate::{SynapseContract, SynapseContractClient};
+use soroban_sdk::{testutils::{Address as _, Events as _}, Address, Env, String as SorobanString, TryFromVal, vec};
+use synapse_contract::{SynapseContract, SynapseContractClient, types::Event};
 
 fn setup(env: &Env) -> (Address, SynapseContractClient) {
     env.mock_all_auths();
@@ -47,6 +47,18 @@ fn grant_and_revoke_relayer() {
     assert!(client.is_relayer(&relayer));
     client.revoke_relayer(&admin, &relayer);
     assert!(!client.is_relayer(&relayer));
+}
+
+#[test]
+fn grant_relayer_emits_relayer_granted_event() {
+    let env = Env::default();
+    let (admin, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    let events = env.events().all();
+    let last = events.last().unwrap();
+    let emitted: Event = Event::try_from_val(&env, &last.2).unwrap();
+    assert_eq!(emitted, Event::RelayerGranted(relayer));
 }
 
 #[test]

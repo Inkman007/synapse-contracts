@@ -8,7 +8,7 @@ use soroban_sdk::{contracttype, Address, Env, String as SorobanString, Vec};
 // TODO(#50): store `relayer: Address` on Transaction (who registered it)
 
 #[contracttype]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum TransactionStatus {
     Pending,
     Processing,
@@ -117,7 +117,7 @@ impl DlqEntry {
 // TODO(#56): add `MaxRetriesExceeded(SorobanString)` variant
 // TODO(#57): add `AdminTransferred(Address, Address)` variant
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Event {
     DepositRegistered(SorobanString, SorobanString), // (tx_id, anchor_id)
     StatusUpdated(SorobanString, TransactionStatus),  // (tx_id, new_status)
@@ -125,8 +125,22 @@ pub enum Event {
     SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
+    RelayerGranted(Address),
 }
 
 fn generate_id(env: &Env) -> SorobanString {
-    SorobanString::from_str(env, &soroban_sdk::format!("{}-{}", env.ledger().timestamp(), env.ledger().sequence()))
+    let ts = env.ledger().timestamp();
+    let seq = env.ledger().sequence() as u64;
+    // Encode as "<timestamp>-<sequence>" using base-10 digits
+    let mut buf = [0u8; 32];
+    let mut pos = 0usize;
+    for (val, is_first) in [(ts, true), (seq, false)] {
+        if !is_first { buf[pos] = b'-'; pos += 1; }
+        if val == 0 { buf[pos] = b'0'; pos += 1; continue; }
+        let start = pos;
+        let mut v = val;
+        while v > 0 { buf[pos] = b'0' + (v % 10) as u8; pos += 1; v /= 10; }
+        buf[start..pos].reverse();
+    }
+    SorobanString::from_bytes(env, &buf[..pos])
 }

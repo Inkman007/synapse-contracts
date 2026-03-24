@@ -144,3 +144,13 @@ pub mod dlq {
         env.storage().persistent().remove(&StorageKey::Dlq(tx_id.clone()));
     }
 }
+
+pub mod limits {
+    use super::*;
+    pub fn set_min(env: &Env, amount: i128) {
+        env.storage().instance().set(&StorageKey::MinDeposit, &amount);
+    }
+    pub fn get_min(env: &Env) -> i128 {
+        env.storage().instance().get(&StorageKey::MinDeposit).unwrap_or(0)
+    }
+}

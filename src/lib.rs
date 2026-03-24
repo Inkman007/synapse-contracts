@@ -115,10 +115,12 @@ impl SynapseContract {
         id
     }
 
-    // TODO(#23): enforce transition guard — must be Pending
     pub fn mark_processing(env: Env, caller: Address, tx_id: SorobanString) {
         require_relayer(&env, &caller);
         let mut tx = deposits::get(&env, &tx_id);
+        if tx.status != TransactionStatus::Pending {
+            panic!("transaction must be Pending");
+        }
         tx.status = TransactionStatus::Processing;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
@@ -310,6 +312,42 @@ mod tests {
         let err = SorobanString::from_str(&env, "first");
         client.mark_failed(&relayer, &tx_id, &err);
         client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "second"));
+    }
+
+    #[test]
+    fn test_mark_processing_succeeds_from_pending() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mp-pending");
+        client.mark_processing(&relayer, &tx_id);
+        assert!(matches!(client.get_transaction(&tx_id).status, TransactionStatus::Processing));
+    }
+
+    #[test]
+    #[should_panic(expected = "transaction must be Pending")]
+    fn test_mark_processing_panics_when_already_processing() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mp-processing");
+        client.mark_processing(&relayer, &tx_id);
+        client.mark_processing(&relayer, &tx_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "transaction must be Pending")]
+    fn test_mark_processing_panics_when_completed() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mp-completed");
+        client.mark_processing(&relayer, &tx_id);
+        client.mark_completed(&relayer, &tx_id);
+        client.mark_processing(&relayer, &tx_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "transaction must be Pending")]
+    fn test_mark_processing_panics_when_failed() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mp-failed");
+        client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "err"));
+        client.mark_processing(&relayer, &tx_id);
     }
 
     #[test]

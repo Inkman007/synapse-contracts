@@ -24,6 +24,7 @@ fn usd(env: &Env) -> SorobanString {
 fn initialize_sets_admin() {
     let env = Env::default();
     let (_, _, _client) = setup(&env);
+    // add a file here
     // TODO(#41): assert client.get_admin() == admin once query is added
 }
 
@@ -198,7 +199,7 @@ fn register_deposit_rejects_non_relayer() {
 fn get_max_deposit_returns_none_before_set() {
     let env = Env::default();
     let (_, client) = setup(&env);
-    assert!(client.get_max_deposit().is_none());
+    assert_eq!(client.get_max_deposit(), None);
 }
 
 #[test]

@@ -195,10 +195,8 @@ impl SynapseContract {
         emit(&env, Event::MovedToDlq(tx_id, error_reason));
     }
 
-    // TODO(#29): implement — reset tx status to Pending, increment retry_count
-    // TODO(#30): remove DLQ entry after successful retry
+    // TODO(#29): increment retry_count on DlqEntry
     // TODO(#31): emit `DlqRetried` event
-    // TODO(#32): only admin OR original relayer should be able to retry
     pub fn retry_dlq(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
         require_admin(&env, &caller);

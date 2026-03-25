@@ -27,6 +27,7 @@ pub struct Transaction {
     pub id: SorobanString,
     pub anchor_transaction_id: SorobanString,
     pub stellar_account: Address,
+    pub relayer: Address, // #50: who registered this deposit
     pub amount: i128,
     pub asset_code: SorobanString,
     pub status: TransactionStatus,
@@ -41,6 +42,7 @@ impl Transaction {
         env: &Env,
         anchor_transaction_id: SorobanString,
         stellar_account: Address,
+        relayer: Address,
         amount: i128,
         asset_code: SorobanString,
         memo: Option<SorobanString>,
@@ -50,6 +52,7 @@ impl Transaction {
             id: generate_id(env, &anchor_transaction_id),
             anchor_transaction_id,
             stellar_account,
+            relayer,
             amount,
             asset_code,
             status: TransactionStatus::Pending,

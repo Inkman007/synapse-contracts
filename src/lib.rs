@@ -209,7 +209,8 @@ impl SynapseContract {
         entry.last_retry_ledger = env.ledger().sequence();
 
         deposits::save(&env, &tx);
-        dlq::push(&env, &entry);
+        dlq::remove(&env, &tx_id);
+        emit(&env, Event::DlqRetried(tx_id.clone()));
 
         emit(&env, Event::StatusUpdated(tx_id, TransactionStatus::Pending));
     }
@@ -295,6 +296,10 @@ impl SynapseContract {
 
     pub fn get_max_deposit(env: Env) -> i128 {
         max_deposit::get(&env)
+    }
+
+    pub fn get_dlq_count(env: Env) -> i128 {
+        dlq::get_count(&env)
     }
 }
 

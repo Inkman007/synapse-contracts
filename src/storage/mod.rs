@@ -20,6 +20,7 @@ pub enum StorageKey {
     AnchorIdx(SorobanString),
     Settlement(SorobanString),
     Dlq(SorobanString),
+    DlqCount(i128),
 }
 
 pub mod admin {
@@ -175,6 +176,9 @@ pub mod max_deposit {
 pub mod dlq {
     use super::*;
     pub fn push(env: &Env, entry: &DlqEntry) {
+        let mut count: i128 = env.storage().persistent().get(&StorageKey::DlqCount(0i128)).unwrap_or(0i128);
+        count += 1;
+        env.storage().persistent().set(&StorageKey::DlqCount(0i128), &count);
         env.storage()
             .persistent()
             .set(&StorageKey::Dlq(entry.tx_id.clone()), entry);
@@ -185,9 +189,14 @@ pub mod dlq {
             .get(&StorageKey::Dlq(tx_id.clone()))
     }
     pub fn remove(env: &Env, tx_id: &SorobanString) {
-        // TODO(#62): call this after a successful retry
+        let mut count: i128 = env.storage().persistent().get(&StorageKey::DlqCount(0i128)).unwrap_or(0i128);
+        count = count.saturating_sub(1);
+        env.storage().persistent().set(&StorageKey::DlqCount(0i128), &count);
         env.storage()
             .persistent()
             .remove(&StorageKey::Dlq(tx_id.clone()));
+    }
+    pub fn get_count(env: &Env) -> i128 {
+        env.storage().persistent().get(&StorageKey::DlqCount(0i128)).unwrap_or(0i128)
     }
 }

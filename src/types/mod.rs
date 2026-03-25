@@ -141,6 +141,7 @@ pub enum Event {
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
     RelayerRevoked(Address),
+    AdminTransferred(Address, Address),              // (old_admin, new_admin)
 }
 
 fn generate_id(env: &Env) -> SorobanString {

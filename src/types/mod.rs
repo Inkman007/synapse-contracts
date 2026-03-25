@@ -47,7 +47,7 @@ impl Transaction {
     ) -> Self {
         let ledger = env.ledger().sequence();
         Self {
-            id: generate_id(env),
+            id: generate_id(env, &anchor_transaction_id),
             anchor_transaction_id,
             stellar_account,
             amount,
@@ -84,7 +84,7 @@ impl Settlement {
         period_end: u64,
     ) -> Self {
         Self {
-            id: generate_id(env),
+            id: generate_settlement_id(env),
             asset_code,
             tx_ids,
             total_amount,

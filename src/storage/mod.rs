@@ -85,13 +85,6 @@ pub mod assets {
         env.storage()
             .instance()
             .remove(&StorageKey::Asset(code.clone()));
-        set_count(env, count(env).saturating_sub(1));
-        env.storage().instance().set(&StorageKey::Asset(code.clone()), &true);
-    }
-    pub fn remove(env: &Env, code: &SorobanString) {
-        env.storage()
-            .instance()
-            .remove(&StorageKey::Asset(code.clone()));
     }
     pub fn is_allowed(env: &Env, code: &SorobanString) -> bool {
         env.storage()
@@ -112,14 +105,17 @@ pub mod max_deposit {
         env.storage().instance().set(&StorageKey::MaxDeposit, amount);
     }
 
-    pub fn get(env: &Env) -> i128 {
-        env.storage().instance().get(&StorageKey::MaxDeposit).unwrap_or(0i128)
+    pub fn get(env: &Env) -> Option<i128> {
+        env.storage().instance().get(&StorageKey::MaxDeposit)
     }
 }
 
 pub mod deposits {
     use super::*;
-    pub fn save(env: &Env, tx: &Transaction) {
+pub fn save(env: &Env, tx: &Transaction) {
+        if super::pause::is_paused(env) {
+            panic!("contract paused");
+        }
         let key = StorageKey::Tx(tx.id.clone());
         env.storage().persistent().set(&key, tx);
         env.storage()
@@ -146,7 +142,10 @@ pub mod deposits {
 
 pub mod settlements {
     use super::*;
-    pub fn save(env: &Env, s: &Settlement) {
+pub fn save(env: &Env, s: &Settlement) {
+        if super::pause::is_paused(env) {
+            panic!("contract paused");
+        }
         env.storage()
             .persistent()
             .set(&StorageKey::Settlement(s.id.clone()), s);
@@ -162,19 +161,14 @@ pub mod settlements {
     }
 }
 
-pub mod max_deposit {
-    use super::*;
-    pub fn set(env: &Env, amount: i128) {
-        env.storage().instance().set(&StorageKey::MaxDeposit, &amount);
-    }
-    pub fn get(env: &Env) -> Option<i128> {
-        env.storage().instance().get(&StorageKey::MaxDeposit)
-    }
-}
+// Duplicate max_deposit module removed
 
 pub mod dlq {
     use super::*;
     pub fn push(env: &Env, entry: &DlqEntry) {
+        if super::pause::is_paused(env) {
+            panic!("contract paused");
+        }
         env.storage()
             .persistent()
             .set(&StorageKey::Dlq(entry.tx_id.clone()), entry);

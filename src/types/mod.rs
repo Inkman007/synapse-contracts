@@ -1,7 +1,4 @@
-use alloc::format;
 use soroban_sdk::{contracttype, Address, Env, String as SorobanString, Vec};
-extern crate alloc;
-use alloc::format;
 
 // TODO(#45): replace generate_id with hash(anchor_transaction_id) for determinism
 
@@ -51,7 +48,7 @@ impl Transaction {
     ) -> Self {
         let ledger = env.ledger().sequence();
         Self {
-            id: generate_id(env, &anchor_transaction_id),
+            id: generate_id(env),
             anchor_transaction_id,
             stellar_account,
             relayer,
@@ -90,7 +87,7 @@ impl Settlement {
         period_end: u64,
     ) -> Self {
         Self {
-            id: generate_settlement_id(env),
+            id: generate_id(env),
             asset_code,
             tx_ids,
             total_amount,

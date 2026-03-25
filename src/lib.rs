@@ -97,7 +97,7 @@ impl SynapseContract {
     pub fn set_max_deposit(env: Env, caller: Address, amount: i128) {
         require_admin(&env, &caller);
         if amount <= 0 { panic!("max deposit must be positive") }
-        max_deposit::set(&env, amount);
+        max_deposit::set(&env, &amount);
     }
 
     pub fn get_max_deposit(env: Env) -> Option<i128> {
@@ -136,6 +136,7 @@ impl SynapseContract {
             &env,
             anchor_transaction_id.clone(),
             stellar_account,
+            caller,
             amount,
             asset_code,
             memo,
@@ -197,10 +198,12 @@ impl SynapseContract {
     // TODO(#31): emit `DlqRetried` event
     pub fn retry_dlq(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
-        require_admin(&env, &caller);
-
-        let mut entry = dlq::get(&env, &tx_id).expect("dlq entry not found");
         let mut tx = deposits::get(&env, &tx_id);
+        let admin = storage::admin::get(&env);
+        if caller != admin && caller != tx.relayer {
+            panic!("not admin or original relayer");
+        }
+        let mut entry = dlq::get(&env, &tx_id).expect("dlq entry not found");
 
         tx.status = TransactionStatus::Pending;
         tx.updated_ledger = env.ledger().sequence();
@@ -214,10 +217,8 @@ impl SynapseContract {
         emit(&env, Event::StatusUpdated(tx_id, TransactionStatus::Pending));
     }
     // TODO(#34): verify no tx_id is already linked to a settlement
-    // TODO(#35): write settlement_id back onto each Transaction
     // TODO(#36): verify total_amount matches sum of tx amounts on-chain
     // TODO(#37): verify period_start <= period_end
-    // TODO(#39): emit per-tx `Settled` event in addition to batch event
     pub fn finalize_settlement(
         env: Env,
         caller: Address,
@@ -245,13 +246,22 @@ impl SynapseContract {
         let s = Settlement::new(
             &env,
             asset_code.clone(),
-            tx_ids,
+            tx_ids.clone(),
             total_amount,
             period_start,
             period_end,
         );
         let id = s.id.clone();
         settlements::save(&env, &s);
+        let mut i: u32 = 0;
+        while i < n {
+            let tx_id = tx_ids.get(i).unwrap();
+            let mut tx = deposits::get(&env, &tx_id);
+            tx.settlement_id = id.clone();
+            deposits::save(&env, &tx);
+            emit(&env, Event::Settled(tx_id, id.clone()));
+            i += 1;
+        }
         emit(
             &env,
             Event::SettlementFinalized(id.clone(), asset_code, total_amount),
@@ -288,14 +298,6 @@ impl SynapseContract {
         relayers::has(&env, &address)
     }
 
-    pub fn set_max_deposit(env: Env, caller: Address, amount: i128) {
-        require_admin(&env, &caller);
-        max_deposit::set(&env, &amount);
-    }
-
-    pub fn get_max_deposit(env: Env) -> i128 {
-        max_deposit::get(&env)
-    }
 }
 
 #[cfg(test)]
@@ -502,11 +504,11 @@ mod tests {
         let client = SynapseContractClient::new(&env, &contract_id);
 
         // Default should be 0
-        assert_eq!(client.get_max_deposit(), 0i128);
+        assert_eq!(client.get_max_deposit(), None);
 
         // Set to 1000
         client.set_max_deposit(&admin, &1000i128);
-        assert_eq!(client.get_max_deposit(), 1000i128);
+        assert_eq!(client.get_max_deposit(), Some(1000i128));
 
         for code in TEST_ASSET_CODES {
             client.add_asset(&admin, &SorobanString::from_str(&env, code));
@@ -514,7 +516,7 @@ mod tests {
         client.add_asset(&admin, &SorobanString::from_str(&env, "OVERFLOW"));
         // Set to 5000
         client.set_max_deposit(&admin, &5000i128);
-        assert_eq!(client.get_max_deposit(), 5000i128);
+        assert_eq!(client.get_max_deposit(), Some(5000i128));
     }
 
     #[test]
@@ -529,7 +531,8 @@ mod tests {
             &0u64,
             &1u64,
         );
-        let _ = settlement_id;
+        let tx = client.get_transaction(&tx_id);
+        assert_eq!(tx.settlement_id, settlement_id);
     }
 
     #[test]

@@ -1,7 +1,6 @@
-use alloc::format;
-use soroban_sdk::{contracttype, Address, Env, String as SorobanString, Vec};
 extern crate alloc;
-use alloc::format;
+
+use soroban_sdk::{contracttype, Address, Env, String as SorobanString, Vec};
 
 // TODO(#45): replace generate_id with hash(anchor_transaction_id) for determinism
 
@@ -51,7 +50,7 @@ impl Transaction {
     ) -> Self {
         let ledger = env.ledger().sequence();
         Self {
-            id: generate_id(env, &anchor_transaction_id),
+            id: generate_id(env),
             anchor_transaction_id,
             stellar_account,
             relayer,
@@ -90,7 +89,7 @@ impl Settlement {
         period_end: u64,
     ) -> Self {
         Self {
-            id: generate_settlement_id(env),
+            id: generate_id(env),
             asset_code,
             tx_ids,
             total_amount,
@@ -124,7 +123,6 @@ impl DlqEntry {
 }
 
 /// Contract events — one variant per state change.
-// TODO(#51): add `RelayerGranted(Address)` variant
 // TODO(#53): add `Initialized(Address)` variant
 // TODO(#54): add `ContractPaused` / `ContractUnpaused` variants
 // TODO(#56): add `MaxRetriesExceeded(SorobanString)` variant
@@ -133,10 +131,12 @@ impl DlqEntry {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
     Initialized(Address),                                    // (admin)
+    RelayerGranted(Address),                                 // (relayer)
     DepositRegistered(SorobanString, SorobanString),         // (tx_id, anchor_id)
     StatusUpdated(SorobanString, TransactionStatus),         // (tx_id, new_status)
     MovedToDlq(SorobanString, SorobanString),                // (tx_id, error_reason)
     DlqRetried(SorobanString),                               // (tx_id)
+    Settled(SorobanString, SorobanString),                   // (tx_id, settlement_id)
     SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),

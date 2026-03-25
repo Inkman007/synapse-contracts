@@ -128,11 +128,11 @@ impl DlqEntry {
 // TODO(#53): add `Initialized(Address)` variant
 // TODO(#54): add `ContractPaused` / `ContractUnpaused` variants
 // TODO(#56): add `MaxRetriesExceeded(SorobanString)` variant
-// TODO(#57): add `AdminTransferred(Address, Address)` variant
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
     Initialized(Address),                                    // (admin)
+    AdminTransferred(Address, Address),
     DepositRegistered(SorobanString, SorobanString),         // (tx_id, anchor_id)
     StatusUpdated(SorobanString, TransactionStatus),         // (tx_id, new_status)
     MovedToDlq(SorobanString, SorobanString),                // (tx_id, error_reason)

@@ -685,23 +685,28 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "period_start must be <= period_end")]
     fn test_finalize_settlement_panics_when_period_start_exceeds_period_end() {
         let env = Env::default();
         let (admin, contract_id) = setup(&env);
         let client = SynapseContractClient::new(&env, &contract_id);
         let relayer = Address::generate(&env);
-
-        let _ = admin;
-        let _ = contract_id;
-        let _ = client;
-
-        SynapseContractClient::new(&env, &contract_id).finalize_settlement(
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &SorobanString::from_str(&env, "USD"));
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "period-order-inner"),
+            &Address::generate(&env),
+            &100i128,
+            &SorobanString::from_str(&env, "USD"),
+            &None,
+        );
+        client.finalize_settlement(
             &relayer,
             &SorobanString::from_str(&env, "USD"),
-            &vec![&env],
-            &0i128,
-            &2u64,
+            &vec![&env, tx_id],
+            &100i128,
+            &10u64,
             &1u64,
         );
     }

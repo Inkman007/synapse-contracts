@@ -16,6 +16,10 @@ fn setup(env: &Env) -> (Address, Address, SynapseContractClient<'_>) {
     (admin, id, client)
 }
 
+fn event_data(env: &Env, raw: Val) -> (Event, u32) {
+    <(Event, u32)>::try_from_val(env, &raw).unwrap()
+}
+
 fn usd(env: &Env) -> SorobanString {
     SorobanString::from_str(env, "USD")
 }
@@ -345,9 +349,29 @@ fn mark_failed_creates_dlq_entry() {
     // TODO(#40): assert client.get_dlq_entry(&tx_id).error_reason == "horizon timeout"
 }
 
-// TODO(#23): test Pending→Processing guard (skip to Processing from Completed should panic)
 // TODO(#25): test Processing→Completed guard
 // TODO(#26): test Failed transition guard
+
+#[test]
+#[should_panic(expected = "invalid status transition")]
+fn mark_processing_on_non_pending_tx_panics() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "lifecycle-guard-1"),
+        &Address::generate(&env),
+        &50_000_000,
+        &usd(&env),
+    );
+    client.mark_processing(&relayer, &tx_id);
+    client.mark_completed(&relayer, &tx_id);
+    // tx is now Completed — must panic
+    client.mark_processing(&relayer, &tx_id);
+}
 
 // ---------------------------------------------------------------------------
 // DLQ retry — TODO(#29)–(#32)
@@ -477,6 +501,7 @@ fn finalize_settlement_emits_per_tx_events() {
     let all_events = env.events().all();
     let event_count = all_events.len();
     let topics: soroban_sdk::Vec<Val> = (symbol_short!("synapse"),).into_val(&env);
+    let ledger = env.ledger().sequence();
 
     let (event_contract_1, event_topics_1, event_data_1) = all_events.get(event_count - 3).unwrap();
     let (event_contract_2, event_topics_2, event_data_2) = all_events.get(event_count - 2).unwrap();
@@ -485,24 +510,23 @@ fn finalize_settlement_emits_per_tx_events() {
     assert_eq!(event_contract_1, contract_id.clone());
     assert_eq!(event_topics_1, topics.clone());
     assert_eq!(
-        Event::try_from_val(&env, &event_data_1).unwrap(),
-        Event::Settled(tx_id_1, settlement_id.clone()),
+        event_data(&env, event_data_1),
+        (Event::Settled(tx_id_1, settlement_id.clone()), ledger),
     );
 
     assert_eq!(event_contract_2, contract_id.clone());
     assert_eq!(event_topics_2, topics.clone());
     assert_eq!(
-        Event::try_from_val(&env, &event_data_2).unwrap(),
-        Event::Settled(tx_id_2, settlement_id.clone()),
+        event_data(&env, event_data_2),
+        (Event::Settled(tx_id_2, settlement_id.clone()), ledger),
     );
 
     assert_eq!(event_contract_3, contract_id);
     assert_eq!(event_topics_3, topics);
     assert_eq!(
-        Event::try_from_val(&env, &event_data_3).unwrap(),
-        Event::SettlementFinalized(settlement_id, usd(&env), 100_000_000),
+        event_data(&env, event_data_3),
+        (Event::SettlementFinalized(settlement_id, usd(&env), 100_000_000), ledger),
     );
-}
 
 // TODO(#33): test that settling a non-Completed tx panics
 // TODO(#34): test that settling an already-settled tx panics

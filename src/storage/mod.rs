@@ -56,34 +56,24 @@ pub mod pending_admin {
 
 pub mod pause {
     use super::*;
-    // TODO(#61): check paused state at the top of every mutating function
     pub fn set(env: &Env, paused: bool) {
         env.storage().instance().set(&StorageKey::Paused, &paused);
     }
     pub fn is_paused(env: &Env) -> bool {
-        env.storage()
-            .instance()
-            .get(&StorageKey::Paused)
-            .unwrap_or(false)
+        env.storage().instance().get(&StorageKey::Paused).unwrap_or(false)
     }
 }
 
 pub mod relayers {
     use super::*;
     pub fn add(env: &Env, r: &Address) {
-        env.storage()
-            .instance()
-            .set(&StorageKey::Relayer(r.clone()), &true);
+        env.storage().instance().set(&StorageKey::Relayer(r.clone()), &true);
     }
     pub fn remove(env: &Env, r: &Address) {
-        env.storage()
-            .instance()
-            .remove(&StorageKey::Relayer(r.clone()));
+        env.storage().instance().remove(&StorageKey::Relayer(r.clone()));
     }
     pub fn has(env: &Env, r: &Address) -> bool {
-        env.storage()
-            .instance()
-            .has(&StorageKey::Relayer(r.clone()))
+        env.storage().instance().has(&StorageKey::Relayer(r.clone()))
     }
 }
 
@@ -112,21 +102,15 @@ pub mod assets {
     }
 
     pub fn remove(env: &Env, code: &SorobanString) {
-        env.storage()
-            .instance()
-            .remove(&StorageKey::Asset(code.clone()));
+        env.storage().instance().remove(&StorageKey::Asset(code.clone()));
     }
 
     pub fn is_allowed(env: &Env, code: &SorobanString) -> bool {
-        env.storage()
-            .instance()
-            .has(&StorageKey::Asset(code.clone()))
+        env.storage().instance().has(&StorageKey::Asset(code.clone()))
     }
 
     pub fn require_allowed(env: &Env, code: &SorobanString) {
-        if !is_allowed(env, code) {
-            panic!("asset not allowed")
-        }
+        if !is_allowed(env, code) { panic!("asset not allowed") }
     }
 }
 
@@ -154,9 +138,7 @@ pub fn save(env: &Env, tx: &Transaction) {
         }
         let key = StorageKey::Tx(tx.id.clone());
         env.storage().persistent().set(&key, tx);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, TX_TTL_THRESHOLD, TX_TTL_EXTEND_TO);
+        env.storage().persistent().extend_ttl(&key, TX_TTL_THRESHOLD, TX_TTL_EXTEND_TO);
     }
 pub fn get(env: &Env, id: &SorobanString) -> Transaction {
     let tx_key = StorageKey::Tx(id.clone());
@@ -168,14 +150,10 @@ pub fn get(env: &Env, id: &SorobanString) -> Transaction {
     tx
 }
     pub fn index_anchor_id(env: &Env, anchor_id: &SorobanString, tx_id: &SorobanString) {
-        env.storage()
-            .persistent()
-            .set(&StorageKey::AnchorIdx(anchor_id.clone()), tx_id);
+        env.storage().persistent().set(&StorageKey::AnchorIdx(anchor_id.clone()), tx_id);
     }
     pub fn find_by_anchor_id(env: &Env, anchor_id: &SorobanString) -> Option<SorobanString> {
-        env.storage()
-            .persistent()
-            .get(&StorageKey::AnchorIdx(anchor_id.clone()))
+        env.storage().persistent().get(&StorageKey::AnchorIdx(anchor_id.clone()))
     }
 }
 

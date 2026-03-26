@@ -42,7 +42,6 @@ fn next_id(env: &Env, counter_key: Symbol) -> SorobanString {
 
 #[contractimpl]
 impl SynapseContract {
-    // TODO(#2): emit `Initialized` event on first call
     pub fn initialize(env: Env, admin: Address) {
         if env.storage().instance().has(&storage::StorageKey::Admin) {
             panic!("already initialised");
@@ -55,26 +54,19 @@ impl SynapseContract {
     // TODO(#3): emit `RelayerGranted` event
 pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         require_not_paused(&env);
-        // Reject the all-zeros Stellar account (GAAAAAA...AWHF) as an invalid address.
-        // This is the canonical "zero address" on Stellar — 32 zero bytes encoded as a G-address.
         let zero_addr = Address::from_string(&SorobanString::from_str(
             &env,
             "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
         ));
-        if relayer == zero_addr {
-            panic!("invalid relayer address")
-        }
+        if relayer == zero_addr { panic!("invalid relayer address") }
         require_admin(&env, &caller);
         relayers::add(&env, &relayer);
     }
 
-    // TODO(#6): panic if revoking a non-existent relayer
     pub fn revoke_relayer(env: Env, caller: Address, relayer: Address) {
         require_not_paused(&env);
         require_admin(&env, &caller);
-        if !relayers::has(&env, &relayer) {
-            panic!("address is not a relayer")
-        }
+        if !relayers::has(&env, &relayer) { panic!("address is not a relayer") }
         relayers::remove(&env, &relayer);
         emit(&env, Event::RelayerRevoked(relayer));
     }
@@ -113,14 +105,11 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         emit(&env, Event::AdminTransferred(old_admin, pending));
     }
 
-    // TODO(#9): emit `ContractPaused` event
-    // TODO(#10): block all state-mutating calls when paused
     pub fn pause(env: Env, caller: Address) {
         require_admin(&env, &caller);
         storage::pause::set(&env, true);
     }
 
-    // TODO(#11): emit `ContractUnpaused` event
     pub fn unpause(env: Env, caller: Address) {
         require_admin(&env, &caller);
         storage::pause::set(&env, false);
@@ -189,13 +178,11 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         require_not_paused(&env);
         require_relayer(&env, &caller);
         assets::require_allowed(&env, &asset_code);
-
         if let Some(max) = max_deposit::get(&env) {
             if amount > max {
                 panic!("amount exceeds max deposit")
             }
         }
-
         if let Some(existing) = deposits::find_by_anchor_id(&env, &anchor_transaction_id) {
             return existing;
         }
@@ -215,14 +202,10 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         let id = tx.id.clone();
         deposits::save(&env, &tx);
         deposits::index_anchor_id(&env, &anchor_transaction_id, &id);
-        emit(
-            &env,
-            Event::DepositRegistered(id.clone(), anchor_transaction_id),
-        );
+        emit(&env, Event::DepositRegistered(id.clone(), anchor_transaction_id));
         id
     }
 
-    // TODO(#23): enforce transition guard — must be Pending
     pub fn mark_processing(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
         require_relayer(&env, &caller);
@@ -276,8 +259,6 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         emit(&env, Event::MovedToDlq(tx_id, error_reason));
     }
 
-    // TODO(#29): increment retry_count on DlqEntry
-    // TODO(#31): emit `DlqRetried` event
     pub fn retry_dlq(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
         let mut entry = dlq::get(&env, &tx_id).expect("dlq entry not found");
@@ -293,10 +274,8 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
 
         tx.status = TransactionStatus::Pending;
         tx.updated_ledger = env.ledger().sequence();
-
         entry.retry_count += 1;
         entry.last_retry_ledger = env.ledger().sequence();
-
         deposits::save(&env, &tx);
         dlq::remove(&env, &tx_id);
 
@@ -305,11 +284,7 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
             Event::StatusUpdated(tx_id, TransactionStatus::Pending),
         );
     }
-    // TODO(#34): verify no tx_id is already linked to a settlement
-    // TODO(#35): write settlement_id back onto each Transaction
-    // TODO(#36): verify total_amount matches sum of tx amounts on-chain
-    // TODO(#37): verify period_start <= period_end
-    // TODO(#39): emit per-tx `Settled` event in addition to batch event
+
     pub fn finalize_settlement(
         env: Env,
         caller: Address,
@@ -359,6 +334,15 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
             period_end,
         );
         let id = s.id.clone();
+        let mut j: u32 = 0;
+        while j < n {
+            let tx_id = tx_ids.get(j).unwrap();
+            let mut tx = deposits::get(&env, &tx_id);
+            tx.settlement_id = id.clone();
+            deposits::save(&env, &tx);
+            emit(&env, Event::Settled(tx_id, id.clone()));
+            j += 1;
+        }
         settlements::save(&env, &s);
         for tx_id in tx_ids.iter() {
             let mut tx = deposits::get(&env, &tx_id);

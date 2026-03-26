@@ -13,6 +13,7 @@ pub enum TransactionStatus {
     Processing,
     Completed,
     Failed,
+    Cancelled,
 }
 
 #[contracttype]

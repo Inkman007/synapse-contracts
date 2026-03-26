@@ -64,6 +64,31 @@ impl SynapseContract {
         storage::admin::set(&env, &new_admin);
     }
 
+    /// Propose a new admin address for transfer.
+    /// Only the current admin can propose a new admin.
+    /// The proposed admin must accept the transfer to complete it.
+    pub fn propose_admin(env: Env, caller: Address, new_admin: Address) {
+        require_admin(&env, &caller);
+        pending_admin::set(&env, &new_admin);
+        let current_admin = admin::get(&env);
+        emit(&env, Event::AdminTransferProposed(current_admin, new_admin));
+    }
+
+    /// Accept the admin transfer proposal.
+    /// Only the proposed admin can accept the transfer.
+    /// After acceptance, the proposed admin becomes the new admin.
+    pub fn accept_admin(env: Env, caller: Address) {
+        caller.require_auth();
+        let pending = pending_admin::get(&env).expect("no pending admin transfer");
+        if caller != pending {
+            panic!("only proposed admin can accept");
+        }
+        let old_admin = admin::get(&env);
+        admin::set(&env, &pending);
+        pending_admin::clear(&env);
+        emit(&env, Event::AdminTransferred(old_admin, pending));
+    }
+
     // TODO(#9): emit `ContractPaused` event
     // TODO(#10): block all state-mutating calls when paused
     pub fn pause(env: Env, caller: Address) {
@@ -285,6 +310,11 @@ impl SynapseContract {
 
     pub fn get_admin(env: Env) -> Address {
         storage::admin::get(&env)
+    }
+
+    /// Get the current admin address
+    pub fn get_admin(env: Env) -> Address {
+        admin::get(&env)
     }
 
     pub fn is_paused(env: Env) -> bool {

@@ -47,6 +47,7 @@ impl Transaction {
         relayer: Address,
         amount: i128,
         asset_code: SorobanString,
+        callback_type: Option<SorobanString>,
         memo: Option<SorobanString>,
     ) -> Self {
         let ledger = env.ledger().sequence();
@@ -61,6 +62,7 @@ impl Transaction {
             created_ledger: ledger,
             updated_ledger: ledger,
             settlement_id: SorobanString::from_str(env, ""),
+            callback_type,
             memo,
             memo_type: None,
             callback_type: None,
@@ -127,6 +129,7 @@ impl DlqEntry {
 // TODO(#51): add `RelayerGranted(Address)` variant
 // TODO(#53): add `Initialized(Address)` variant
 // TODO(#54): add `ContractPaused` / `ContractUnpaused` variants
+// TODO(#55): add `DlqRetried(SorobanString)` variant
 // TODO(#56): add `MaxRetriesExceeded(SorobanString)` variant
 // TODO(#57): add `AdminTransferred(Address, Address)` variant
 #[contracttype]
@@ -134,7 +137,6 @@ impl DlqEntry {
 pub enum Event {
     Initialized(Address),                                    // (admin)
     RelayerGranted(Address),                                 // (relayer)
-    RelayerRevoked(Address),                                 // (relayer)
     DepositRegistered(SorobanString, SorobanString),         // (tx_id, anchor_id)
     StatusUpdated(SorobanString, TransactionStatus),         // (tx_id, new_status)
     MovedToDlq(SorobanString, SorobanString),                // (tx_id, error_reason)

@@ -25,7 +25,7 @@ fn usd(env: &Env) -> SorobanString {
 }
 
 // ---------------------------------------------------------------------------
-// Init — TODO(#1), TODO(#2)
+// Init — TODO(#2)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -37,9 +37,8 @@ fn initialize_sets_admin() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "already initialised")]
 fn initialize_twice_panics() {
-    // TODO(#1): implement guard, then enable this test
     let env = Env::default();
     let (admin, _, client) = setup(&env);
     client.initialize(&admin);
@@ -472,7 +471,7 @@ fn finalize_settlement_stores_record() {
 }
 
 #[test]
-fn finalize_settlement_emits_per_tx_events() {
+fn finalize_settlement_emits_settlement_finalized_event() {
     let env = Env::default();
     let (admin, contract_id, client) = setup(&env);
     let relayer = Address::generate(&env);
@@ -499,7 +498,6 @@ fn finalize_settlement_emits_per_tx_events() {
     );
 
     let all_events = env.events().all();
-    let event_count = all_events.len();
     let topics: soroban_sdk::Vec<Val> = (symbol_short!("synapse"),).into_val(&env);
     let ledger = env.ledger().sequence();
 

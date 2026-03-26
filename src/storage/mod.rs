@@ -132,7 +132,10 @@ pub mod max_deposit {
 
 pub mod deposits {
     use super::*;
-    pub fn save(env: &Env, tx: &Transaction) {
+pub fn save(env: &Env, tx: &Transaction) {
+        if super::pause::is_paused(env) {
+            panic!("contract paused");
+        }
         let key = StorageKey::Tx(tx.id.clone());
         env.storage().persistent().set(&key, tx);
         env.storage().persistent().extend_ttl(&key, TX_TTL_THRESHOLD, TX_TTL_EXTEND_TO);
@@ -156,10 +159,13 @@ pub fn get(env: &Env, id: &SorobanString) -> Transaction {
 
 pub mod settlements {
     use super::*;
-    pub fn save(env: &Env, s: &Settlement) {
-        let key = StorageKey::Settlement(s.id.clone());
-        env.storage().persistent().set(&key, s);
-        env.storage().persistent().extend_ttl(&key, 535_679, 535_679);
+pub fn save(env: &Env, s: &Settlement) {
+        if super::pause::is_paused(env) {
+            panic!("contract paused");
+        }
+        env.storage()
+            .persistent()
+            .set(&StorageKey::Settlement(s.id.clone()), s);
     }
     pub fn get(env: &Env, id: &SorobanString) -> Settlement {
         env.storage()
